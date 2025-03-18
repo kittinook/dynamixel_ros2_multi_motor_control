@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from dynamixel_control.dummy_module import dummy_function, dummy_var
+from dynamixel_ros2_multi_motor_control.dummy_module import dummy_function, dummy_var
 import rclpy
 from rclpy.node import Node
 
