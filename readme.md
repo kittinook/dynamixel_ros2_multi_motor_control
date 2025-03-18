@@ -51,7 +51,7 @@ source install/setup.bash
 Modify motor parameters in the YAML configuration file:
 
 ```bash
-nano ~/ros2_ws/src/dynamixel_ros2_multi_motor_control/config/motor_config.yaml
+nano ~/ros2_ws/src/dynamixel_ros2_multi_motor_control/config/motor_params.yaml
 ```
 
 ### Example Configuration
