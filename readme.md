@@ -1,5 +1,3 @@
-I'll improve the README by restructuring it in markdown format with better organization, clearer instructions, and more comprehensive information. Here's an enhanced version:
-
 # Dynamixel ROS2 Multi-Motor Control
 
 ![Dynamixel Motors](https://via.placeholder.com/800x200.png?text=Dynamixel+ROS2+Multi-Motor+Control)
