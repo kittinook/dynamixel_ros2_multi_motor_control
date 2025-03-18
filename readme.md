@@ -77,13 +77,13 @@ motors:
 Launch the node using the provided launch file:
 
 ```bash
-ros2 launch dynamixel_ros2_multi_motor_control multi_motor_launch.py
+ros2 launch dynamixel_ros2_multi_motor_control dynamixel_hardware_interface.launch.py
 ```
 
 Custom configurations can be specified:
 
 ```bash
-ros2 launch dynamixel_ros2_multi_motor_control multi_motor_launch.py config_file:=my_config.yaml
+ros2 launch dynamixel_ros2_multi_motor_control dynamixel_hardware_interface.launch.py config_file:=my_config.yaml
 ```
 
 ### Operating Modes
