@@ -55,17 +55,71 @@ nano ~/ros2_ws/src/dynamixel_ros2_multi_motor_control/config/motor_params.yaml
 ### Example Configuration
 
 ```yaml
-motors:
-  - id: 1
-    operating_mode: 3  # Position mode
-    position_p_gain: 800
-    position_i_gain: 0
-    position_d_gain: 0
-  - id: 2
-    operating_mode: 1  # Velocity mode
-    velocity_p_gain: 100
-    velocity_i_gain: 1920
-    velocity_d_gain: 0
+multi_motor_control_node:
+  ros__parameters:
+    motor_ids: [12, 41]
+    default_current_factor: 2.69
+    default_velocity_factor: 0.229
+    default_position_full_scale: 4095.0
+    default_operating_mode: 0
+    # ค่าเพิ่มเติมสำหรับ register ต่างๆ
+    default_temperature_limit: 80
+    default_max_voltage_limit: 160
+    default_min_voltage_limit: 95
+    default_pwm_limit: 885
+    default_current_limit: 1193
+    default_velocity_limit: 200
+    default_max_position_limit: 4095
+    default_min_position_limit: 0
+    default_velocity_i_gain: 1920
+    default_velocity_p_gain: 100
+    default_position_d_gain: 0
+    default_position_i_gain: 0
+    default_position_p_gain: 800
+    default_feedforward_2nd_gain: 0
+    default_feedforward_1st_gain: 0
+
+    motor_12:
+      current_factor: 2.7
+      velocity_factor: 0.225
+      position_full_scale: 4095.0
+      operating_mode: 1
+      temperature_limit: 80
+      max_voltage_limit: 160
+      min_voltage_limit: 95
+      pwm_limit: 885
+      current_limit: 1193
+      velocity_limit: 200
+      max_position_limit: 4095
+      min_position_limit: 0
+      velocity_i_gain: 1920
+      velocity_p_gain: 100
+      position_d_gain: 0
+      position_i_gain: 0
+      position_p_gain: 800
+      feedforward_2nd_gain: 0
+      feedforward_1st_gain: 0
+
+    motor_41:
+      current_factor: 2.69
+      velocity_factor: 0.229
+      position_full_scale: 4095.0
+      operating_mode: 1
+      temperature_limit: 80
+      max_voltage_limit: 160
+      min_voltage_limit: 95
+      pwm_limit: 885
+      current_limit: 1193
+      velocity_limit: 200
+      max_position_limit: 4095
+      min_position_limit: 0
+      velocity_i_gain: 1920
+      velocity_p_gain: 100
+      position_d_gain: 0
+      position_i_gain: 0
+      position_p_gain: 800
+      feedforward_2nd_gain: 0
+      feedforward_1st_gain: 0
 ```
 
 ## Usage
