@@ -38,7 +38,6 @@ Clone this repository into your ROS2 workspace:
 cd ~/ros2_ws/src
 git clone https://github.com/kittinook/dynamixel_ros2_multi_motor_control.git
 git clone -b humble https://github.com/ROBOTIS-GIT/DynamixelSDK.git
-git clone -b humble https://github.com/ROBOTIS-GIT/dynamixel_hardware_interface.git
 git clone -b humble https://github.com/ROBOTIS-GIT/dynamixel_interfaces.git
 ```
 
