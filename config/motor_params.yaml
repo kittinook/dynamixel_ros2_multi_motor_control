@@ -16,12 +16,18 @@ multi_motor_control_node:
     default_velocity_limit: 200                 # Maximum allowable velocity of the motor (in RPM).
     default_max_position_limit: 4095            # Maximum allowed position value for the motor (e.g., 4095 = 360 degrees).
     default_min_position_limit: 0               # Minimum allowed position value for the motor (e.g., 0 = 0 degrees).
-    default_velocity_i_gain: 1920               # PID controller parameters (Integral and Proportional gains) used in Velocity Control mode.
-    default_velocity_p_gain: 100                
-    default_position_d_gain: 0                  # PID controller parameters (Derivative, Integral, and Proportional gains) used in Position Control mode.
+    
+    # PID controller parameters (Integral and Proportional gains) used in Velocity Control mode.
+    default_velocity_i_gain: 1920               
+    default_velocity_p_gain: 100
+    
+    # PID controller parameters (Derivative, Integral, and Proportional gains) used in Position Control mode.                
+    default_position_d_gain: 0
     default_position_i_gain: 0
     default_position_p_gain: 800
-    default_feedforward_2nd_gain: 0             # Feedforward gains used to improve positional control performance (usually set to 0 if unused).
+    
+    # Feedforward gains used to improve positional control performance (usually set to 0 if unused).
+    default_feedforward_2nd_gain: 0             
     default_feedforward_1st_gain: 0
 
     port_name: "/dev/ttyUSB0"                   # Serial port name for connecting to Dynamixel motors (e.g., /dev/ttyUSB0).
@@ -68,24 +74,3 @@ multi_motor_control_node:
       position_p_gain: 800
       feedforward_2nd_gain: 0
       feedforward_1st_gain: 0
-
-    # motor_42:
-    #   current_factor: 2.69
-    #   velocity_factor: 0.229
-    #   position_full_scale: 4095.0
-    #   operating_mode: 0
-    #   temperature_limit: 80
-    #   max_voltage_limit: 160
-    #   min_voltage_limit: 95
-    #   pwm_limit: 885
-    #   current_limit: 1193
-    #   velocity_limit: 200
-    #   max_position_limit: 4095
-    #   min_position_limit: 0
-    #   velocity_i_gain: 1920
-    #   velocity_p_gain: 100
-    #   position_d_gain: 0
-    #   position_i_gain: 0
-    #   position_p_gain: 800
-    #   feedforward_2nd_gain: 0
-    #   feedforward_1st_gain: 0
