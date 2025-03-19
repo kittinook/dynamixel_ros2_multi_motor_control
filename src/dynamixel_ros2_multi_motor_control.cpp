@@ -634,7 +634,7 @@ private:
         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Data not available for position", id);
         continue;
       }
-      uint16_t current_raw = groupBulkRead_->getData(id, ADDR_PRESENT_CURRENT, 2);
+      int16_t current_raw = groupBulkRead_->getData(id, ADDR_PRESENT_CURRENT, 2);
       float current_mA = static_cast<float>(current_raw) * motor_current_factor_map_[id];
       std_msgs::msg::Float32 current_msg;
       current_msg.data = current_mA;
@@ -646,7 +646,7 @@ private:
       velocity_msg.data = velocity_rad_s;
       velocity_pub_map_[id]->publish(velocity_msg);
       int32_t position_raw = groupBulkRead_->getData(id, ADDR_PRESENT_POSITION, 4);
-      float position_deg = (static_cast<float>(position_raw) * 360.0f) / motor_position_full_scale_map_[id];
+      float position_deg = (static_cast<float>(position_raw) * 2.0f * M_PI) / motor_position_full_scale_map_[id];
       std_msgs::msg::Float32 position_msg;
       position_msg.data = position_deg;
       position_pub_map_[id]->publish(position_msg);
