@@ -39,11 +39,8 @@ install(PROGRAMS
 include_directories(include)
 
 # Create Cpp executable
-add_executable(cpp_node_test src/cpp_node.cpp)
-ament_target_dependencies(cpp_node_test rclcpp)
-
-add_executable(current_node_ex3 src/current_node_ex3.cpp)
-ament_target_dependencies(current_node_ex3
+add_executable(dynamixel_ros2_multi_motor_control src/dynamixel_ros2_multi_motor_control.cpp)
+ament_target_dependencies(dynamixel_ros2_multi_motor_control
   dynamixel_sdk_custom_interfaces
   dynamixel_sdk
   rclcpp
@@ -53,8 +50,7 @@ ament_target_dependencies(current_node_ex3
 
 # Install Cpp executables
 install(TARGETS
-  cpp_node_test
-  current_node_ex3
+  dynamixel_ros2_multi_motor_control
   DESTINATION lib/${PROJECT_NAME}
 )
 

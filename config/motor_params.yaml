@@ -1,27 +1,32 @@
 multi_motor_control_node:
   ros__parameters:
-    motor_ids: [12, 41]
-    default_current_factor: 2.69
-    default_velocity_factor: 0.229
-    default_position_full_scale: 4095.0
-    default_operating_mode: 0
-    # ค่าเพิ่มเติมสำหรับ register ต่างๆ
-    default_temperature_limit: 80
-    default_max_voltage_limit: 160
-    default_min_voltage_limit: 95
-    default_pwm_limit: 885
-    default_current_limit: 1193
-    default_velocity_limit: 200
-    default_max_position_limit: 4095
-    default_min_position_limit: 0
-    default_velocity_i_gain: 1920
-    default_velocity_p_gain: 100
-    default_position_d_gain: 0
+    motor_ids: [12, 41]                         # List of Dynamixel motor IDs you want to control (e.g., [12, 41]).
+    default_current_factor: 2.69                # Factor to convert the motor’s raw current reading into milliamps (mA).
+    default_velocity_factor: 0.229              # Factor to convert the motor’s raw velocity value into revolutions per minute (RPM).
+    default_position_full_scale: 4095.0         # Maximum position value representing a full rotation of the motor (e.g., 4095 for 360 degrees).
+    default_operating_mode: 0                   # The default operating mode for the motor:
+                                                #  0: Current Control Mode
+                                                #  1: Velocity Control Mode
+                                                #  3: Position Control Mode
+    default_temperature_limit: 80               # Maximum operating temperature (°C) before the motor shuts down for protection.
+    default_max_voltage_limit: 160              # Maximum voltage limit (in 0.1V units, e.g., 160 = 16.0V).
+    default_min_voltage_limit: 95               # Minimum operational voltage (in 0.1V units, e.g., 95 = 9.5V).
+    default_pwm_limit: 885                      # Maximum PWM (Pulse Width Modulation) value allowed.
+    default_current_limit: 1193                 # Maximum allowable current (in mA) that the motor can draw.
+    default_velocity_limit: 200                 # Maximum allowable velocity of the motor (in RPM).
+    default_max_position_limit: 4095            # Maximum allowed position value for the motor (e.g., 4095 = 360 degrees).
+    default_min_position_limit: 0               # Minimum allowed position value for the motor (e.g., 0 = 0 degrees).
+    default_velocity_i_gain: 1920               # PID controller parameters (Integral and Proportional gains) used in Velocity Control mode.
+    default_velocity_p_gain: 100                
+    default_position_d_gain: 0                  # PID controller parameters (Derivative, Integral, and Proportional gains) used in Position Control mode.
     default_position_i_gain: 0
     default_position_p_gain: 800
-    default_feedforward_2nd_gain: 0
+    default_feedforward_2nd_gain: 0             # Feedforward gains used to improve positional control performance (usually set to 0 if unused).
     default_feedforward_1st_gain: 0
 
+    port_name: "/dev/ttyUSB0"                   # Serial port name for connecting to Dynamixel motors (e.g., /dev/ttyUSB0).
+    baudrate: 1000000                           # Communication speed with Dynamixel motors (e.g., 1000000 = 1 Mbps).
+    
     motor_12:
       current_factor: 2.7
       velocity_factor: 0.225

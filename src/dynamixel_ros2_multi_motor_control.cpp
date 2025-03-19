@@ -9,18 +9,18 @@
 #include "std_msgs/msg/float32.hpp"
 #include "std_msgs/msg/int16.hpp"
 #include "std_msgs/msg/int16_multi_array.hpp"
-#include "sensor_msgs/msg/joint_state.hpp"  // สำหรับ JointState
+#include "sensor_msgs/msg/joint_state.hpp" 
 #include "dynamixel_sdk/dynamixel_sdk.h"
 
 // Define addresses and lengths (Feedback registers)
-#define ADDR_BULK_START         126   // เริ่มต้นที่ Present Current
-#define BULK_DATA_LENGTH        10    // ครอบคลุม Present Current (2 bytes) + Present Velocity (4 bytes) + Present Position (4 bytes)
+#define ADDR_BULK_START         126   // Starts at Present Current
+#define BULK_DATA_LENGTH        10    // Covers Present Current (2 bytes), Present Velocity (4 bytes), and Present Position (4 bytes)
 
 #define ADDR_PRESENT_CURRENT    126   // 2 bytes
 #define ADDR_PRESENT_VELOCITY   128   // 4 bytes
 #define ADDR_PRESENT_POSITION   132   // 4 bytes
 
-// Goal Current address (สำหรับการสั่งงาน)
+// Goal Current address (for commanding)
 #define ADDR_GOAL_CURRENT       102   // 2 bytes
 
 // Operating Mode address and default value
@@ -47,14 +47,18 @@
 
 // Device settings
 #define PROTOCOL_VERSION 2.0
-#define BAUDRATE 1000000
-#define DEVICENAME "/dev/ttyUSB0"
+// #define BAUDRATE 1000000
+// #define DEVICENAME "/dev/ttyUSB0"
+
+std::string DEVICENAME;
+int BAUDRATE;
 
 class MultiMotorControlNode : public rclcpp::Node
 {
 public:
   MultiMotorControlNode() : Node("multi_motor_control_node")
   {
+
     // Load global default parameters
     this->declare_parameter<std::vector<int>>("motor_ids", {12, 41, 42});
     this->declare_parameter<double>("default_current_factor", 2.69);
@@ -126,7 +130,7 @@ public:
       motor_feedforward_1st_gain_map_[id] = this->get_parameter(ns + ".feedforward_1st_gain").as_int();
     }
 
-    // สร้าง publisher สำหรับ feedback แยก namespace สำหรับแต่ละมอเตอร์
+    // Create publishers for feedback, separate namespaces for each motor
     for (auto id : motor_ids_) {
       std::string ns = "motor_" + std::to_string(id);
       current_pub_map_[id] = this->create_publisher<std_msgs::msg::Float32>(ns + "/present_current", 10);
@@ -134,31 +138,42 @@ public:
       position_pub_map_[id] = this->create_publisher<std_msgs::msg::Float32>(ns + "/present_position", 10);
     }
     
-    // สร้าง publisher สำหรับ joint state
+    // Create publisher for joint states
     joint_state_pub_ = this->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
 
-    // Subscriber สำหรับ Goal Current แบบรายตัว
+    // Subscribers for individual Goal Current commands
     for (auto id : motor_ids_) {
       std::string topic = "motor_" + std::to_string(id) + "/goal_current";
       auto sub = this->create_subscription<std_msgs::msg::Int16>(
         topic,
         10,
         [this, id](const std_msgs::msg::Int16::SharedPtr msg) {
-          uint8_t dxl_error = 0;
-          int dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_GOAL_CURRENT, msg->data, &dxl_error);
-          if (dxl_comm_result != COMM_SUCCESS) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to write goal current: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
-          } else if (dxl_error != 0) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Goal current write error: %s", id, packetHandler_->getRxPacketError(dxl_error));
-          } else {
-            RCLCPP_INFO(this->get_logger(), "Motor ID %d: Set goal current to %d", id, msg->data);
-          }
+          writeGoalVelocity(id, msg->data);
         }
       );
       goal_current_sub_map_[id] = sub;
     }
+    // for (auto id : motor_ids_) {
+    //   std::string topic = "motor_" + std::to_string(id) + "/goal_current";
+    //   auto sub = this->create_subscription<std_msgs::msg::Int16>(
+    //     topic,
+    //     10,
+    //     [this, id](const std_msgs::msg::Int16::SharedPtr msg) {
+    //       uint8_t dxl_error = 0;
+    //       int dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_GOAL_CURRENT, msg->data, &dxl_error);
+    //       if (dxl_comm_result != COMM_SUCCESS) {
+    //         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to write goal current: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
+    //       } else if (dxl_error != 0) {
+    //         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Goal current write error: %s", id, packetHandler_->getRxPacketError(dxl_error));
+    //       } else {
+    //         RCLCPP_INFO(this->get_logger(), "Motor ID %d: Set goal current to %d", id, msg->data);
+    //       }
+    //     }
+    //   );
+    //   goal_current_sub_map_[id] = sub;
+    // }
     
-    // Subscriber สำหรับ Group Goal Current
+    // Subscriber for Group Goal Current
     group_goal_current_sub_ = this->create_subscription<std_msgs::msg::Int16MultiArray>(
       "group_goal_current", 10,
       std::bind(&MultiMotorControlNode::groupGoalCurrentCallback, this, std::placeholders::_1)
@@ -198,67 +213,78 @@ public:
       "group_goal_position", 10,
       std::bind(&MultiMotorControlNode::groupGoalPositionCallback, this, std::placeholders::_1)
     );
-    // Subscriber สำหรับปรับ Velocity PID (array of 2: [I Gain, P Gain])
-    for (auto id : motor_ids_) {
-      std::string topic = "motor_" + std::to_string(id) + "/set_velocity_pid";
-      auto sub = this->create_subscription<std_msgs::msg::Int16MultiArray>(
-        topic,
-        10,
-        [this, id](const std_msgs::msg::Int16MultiArray::SharedPtr msg) {
-          if (msg->data.size() != 2) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Velocity PID array size is not 2", id);
-            return;
-          }
-          uint8_t dxl_error = 0;
-          int dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_VELOCITY_I_GAIN, msg->data[0], &dxl_error);
-          if (dxl_comm_result != COMM_SUCCESS) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Velocity I Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
-          }
-          dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_VELOCITY_P_GAIN, msg->data[1], &dxl_error);
-          if (dxl_comm_result != COMM_SUCCESS) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Velocity P Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
-          } else {
-            RCLCPP_INFO(this->get_logger(), "Motor ID %d: Velocity PID set to [%d, %d]", id, msg->data[0], msg->data[1]);
-          }
-        }
-      );
-      velocity_pid_sub_map_[id] = sub;
-    }
+    // Subscribers for adjusting Velocity PID (array of 2: [I Gain, P Gain])
+    // for (auto id : motor_ids_) {
+    //   std::string topic = "motor_" + std::to_string(id) + "/set_velocity_pid";
+    //   auto sub = this->create_subscription<std_msgs::msg::Int16MultiArray>(
+    //     topic,
+    //     10,
+    //     [this, id](const std_msgs::msg::Int16MultiArray::SharedPtr msg) {
+    //       if (msg->data.size() != 2) {
+    //         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Velocity PID array size is not 2", id);
+    //         return;
+    //       }
+    //       uint8_t dxl_error = 0;
+    //       int dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_VELOCITY_I_GAIN, msg->data[0], &dxl_error);
+    //       if (dxl_comm_result != COMM_SUCCESS) {
+    //         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Velocity I Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
+    //       }
+    //       dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_VELOCITY_P_GAIN, msg->data[1], &dxl_error);
+    //       if (dxl_comm_result != COMM_SUCCESS) {
+    //         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Velocity P Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
+    //       } else {
+    //         RCLCPP_INFO(this->get_logger(), "Motor ID %d: Velocity PID set to [%d, %d]", id, msg->data[0], msg->data[1]);
+    //       }
+    //     }
+    //   );
+    //   velocity_pid_sub_map_[id] = sub;
+    // }
 
-    // Subscriber สำหรับปรับ Position PID (array of 3: [D Gain, I Gain, P Gain])
-    for (auto id : motor_ids_) {
-      std::string topic = "motor_" + std::to_string(id) + "/set_position_pid";
-      auto sub = this->create_subscription<std_msgs::msg::Int16MultiArray>(
-        topic,
-        10,
-        [this, id](const std_msgs::msg::Int16MultiArray::SharedPtr msg) {
-          if (msg->data.size() != 3) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Position PID array size is not 3", id);
-            return;
-          }
-          uint8_t dxl_error = 0;
-          int dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_POSITION_D_GAIN, msg->data[0], &dxl_error);
-          if (dxl_comm_result != COMM_SUCCESS) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Position D Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
-          }
-          dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_POSITION_I_GAIN, msg->data[1], &dxl_error);
-          if (dxl_comm_result != COMM_SUCCESS) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Position I Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
-          }
-          dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_POSITION_P_GAIN, msg->data[2], &dxl_error);
-          if (dxl_comm_result != COMM_SUCCESS) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Position P Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
-          } else {
-            RCLCPP_INFO(this->get_logger(), "Motor ID %d: Position PID set to [%d, %d, %d]", id, msg->data[0], msg->data[1], msg->data[2]);
-          }
-        }
-      );
-      position_pid_sub_map_[id] = sub;
-    }
+    // Subscribers for adjusting Position PID (array of 3: [D Gain, I Gain, P Gain])
+    // for (auto id : motor_ids_) {
+    //   std::string topic = "motor_" + std::to_string(id) + "/set_position_pid";
+    //   auto sub = this->create_subscription<std_msgs::msg::Int16MultiArray>(
+    //     topic,
+    //     10,
+    //     [this, id](const std_msgs::msg::Int16MultiArray::SharedPtr msg) {
+    //       if (msg->data.size() != 3) {
+    //         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Position PID array size is not 3", id);
+    //         return;
+    //       }
+    //       uint8_t dxl_error = 0;
+    //       int dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_POSITION_D_GAIN, msg->data[0], &dxl_error);
+    //       if (dxl_comm_result != COMM_SUCCESS) {
+    //         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Position D Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
+    //       }
+    //       dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_POSITION_I_GAIN, msg->data[1], &dxl_error);
+    //       if (dxl_comm_result != COMM_SUCCESS) {
+    //         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Position I Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
+    //       }
+    //       dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_POSITION_P_GAIN, msg->data[2], &dxl_error);
+    //       if (dxl_comm_result != COMM_SUCCESS) {
+    //         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Position P Gain: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
+    //       } else {
+    //         RCLCPP_INFO(this->get_logger(), "Motor ID %d: Position PID set to [%d, %d, %d]", id, msg->data[0], msg->data[1], msg->data[2]);
+    //       }
+    //     }
+    //   );
+    //   position_pid_sub_map_[id] = sub;
+    // }
 
-    // Setup Dynamixel Port and Packet Handlers (อีกครั้ง เพื่อความแน่ใจ)
-    portHandler_ = dynamixel::PortHandler::getPortHandler(DEVICENAME);
+    // Setup Dynamixel Port and Packet Handlers
+    std::string DEVICENAME;
+    int BAUDRATE;
+
+    this->declare_parameter<std::string>("port_name", "/dev/ttyUSB0");
+    this->declare_parameter<int>("baudrate", 1000000);
+
+    DEVICENAME = this->get_parameter("port_name").as_string();
+    BAUDRATE = this->get_parameter("baudrate").as_int();
+
+    // Configure Dynamixel Port and Baudrate
+    portHandler_ = dynamixel::PortHandler::getPortHandler(DEVICENAME.c_str());
     packetHandler_ = dynamixel::PacketHandler::getPacketHandler(PROTOCOL_VERSION);
+    
     if (!portHandler_->openPort()) {
       RCLCPP_ERROR(this->get_logger(), "ไม่สามารถเปิดพอร์ตได้");
       return;
@@ -271,14 +297,13 @@ public:
 
     RCLCPP_INFO(this->get_logger(), "------ Configuring Motor ID: ปิดพอร์ตและตั้งค่า baudrate สำเร็จ");
     // ----- SET MODE for each motor -----
-    // ก่อนตั้ง operating mode ควรปิด torque ก่อน
+    // Torque should be disabled before setting operating mode
     for (auto id : motor_ids_) {
       uint8_t dxl_error = 0;
       int dxl_comm_result = packetHandler_->write1ByteTxRx(portHandler_, id, 64, 0, &dxl_error);
       if (dxl_comm_result != COMM_SUCCESS) {
         RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to disable torque for set mode: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
       }
-      // ตั้งค่า operating mode จากการ config ของแต่ละมอเตอร์
       int op_mode = motor_operating_mode_map_[id];
       dxl_comm_result = packetHandler_->write1ByteTxRx(portHandler_, id, ADDR_OPERATING_MODE, op_mode, &dxl_error);
       if (dxl_comm_result != COMM_SUCCESS) {
@@ -288,12 +313,11 @@ public:
       } else {
         RCLCPP_INFO(this->get_logger(), "Motor ID %d: Operating mode set to %d", id, op_mode);
       }
-      // เพิ่มการ config register เพิ่มเติมสำหรับมอเตอร์แต่ละตัว
       configureMotor(id);
     }
-    // หลังจากตั้งค่า operating mode และ config แล้ว สามารถเปิด torque ได้
+    // After setting operating mode and configuration, torque can be enabled
 
-    // Enable Torque สำหรับมอเตอร์แต่ละตัว
+    // Enable Torque 
     for (auto id : motor_ids_) {
       uint8_t dxl_error = 0;
       int dxl_comm_result = packetHandler_->write1ByteTxRx(portHandler_, id, 64, 1, &dxl_error);
@@ -307,24 +331,90 @@ public:
     }
     // ----- END SET MODE -----
 
-    // สร้าง instance ของ GroupBulkRead สำหรับอ่าน feedback จากทุกมอเตอร์
+    // Create instance of GroupBulkRead for feedback reading from all motors
     groupBulkRead_ = new dynamixel::GroupBulkRead(portHandler_, packetHandler_);
-    // สำหรับแต่ละมอเตอร์ ให้เพิ่ม parameter Bulk Read (เริ่มที่ address 126 ครอบคลุม 10 bytes)
+    // For each motor, add parameters for Bulk Read (starts at address 126, covering 10 bytes)
     for (auto id : motor_ids_) {
       if (!groupBulkRead_->addParam(id, ADDR_BULK_START, BULK_DATA_LENGTH)) {
         RCLCPP_ERROR(this->get_logger(), "Failed to add parameter for motor ID: %d", id);
       }
     }
 
-    // สร้าง instance ของ GroupSyncWrite สำหรับสั่งงาน Goal Current แบบ Group
+    // Create instance of GroupSyncWrite for Goal Current commands as a group
     groupSyncWrite_ = new dynamixel::GroupSyncWrite(portHandler_, packetHandler_, ADDR_GOAL_CURRENT, 2);
 
-    // ตั้ง Timer สำหรับอ่าน feedback (ตัวอย่างกำหนดเป็น 1ms, ปรับตามต้องการ)
+    // Set timer to read feedback (example interval set to 1ms, adjust as needed)
     timer_ = this->create_wall_timer(std::chrono::milliseconds(1),
       std::bind(&MultiMotorControlNode::readFeedback, this));
   }
 
+  void reconnectDynamixel()
+  {
+    RCLCPP_WARN(this->get_logger(), "Attempting to reconnect Dynamixel...");
+    portHandler_->closePort();
+
+    while (rclcpp::ok()) {
+      if (portHandler_->openPort() && portHandler_->setBaudRate(BAUDRATE)) {
+        RCLCPP_INFO(this->get_logger(), "Dynamixel reconnected successfully.");
+
+        for (auto id : motor_ids_) {
+          configureMotor(id);
+          uint8_t dxl_error;
+          packetHandler_->write1ByteTxRx(portHandler_, id, 64, 1, &dxl_error);
+        }
+
+        break;
+      }
+      RCLCPP_ERROR(this->get_logger(), "Reconnect failed. Retrying in 1 second...");
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+  }
+
+  void writeGoalCurrent(int id, int16_t goal_current)
+  {
+    uint8_t dxl_error = 0;
+    int dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_GOAL_CURRENT, goal_current, &dxl_error);
+    
+    if (dxl_comm_result != COMM_SUCCESS || dxl_error != 0) {
+      RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Error setting goal current, attempting reconnect... (Result: %s, Error: %s)", 
+                  id, packetHandler_->getTxRxResult(dxl_comm_result), packetHandler_->getRxPacketError(dxl_error));
+      reconnectDynamixel();
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Motor ID %d: Goal current set to %d", id, goal_current);
+    }
+  }
+
   void writeGoalVelocity(int id, float velocity_rad_s)
+  {
+    float rev_per_min = (velocity_rad_s * 60.0f) / (2.0f * M_PI);
+    int32_t velocity_raw = static_cast<int32_t>(rev_per_min / motor_velocity_factor_map_[id]);
+    uint8_t dxl_error = 0;
+    int dxl_comm_result = packetHandler_->write4ByteTxRx(portHandler_, id, 104, velocity_raw, &dxl_error);
+
+    if (dxl_comm_result != COMM_SUCCESS || dxl_error != 0) {
+      RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Error setting velocity, attempting reconnect...", id);
+      reconnectDynamixel();
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Motor ID %d: Goal velocity set to %.2f rad/s", id, velocity_rad_s);
+    }
+  }
+
+  void writeGoalPosition(int id, float position_rad)
+  {
+    float position_deg = position_rad * (180.0f / M_PI);
+    uint32_t position_raw = static_cast<uint32_t>((position_deg / 360.0f) * motor_position_full_scale_map_[id]);
+    uint8_t dxl_error = 0;
+    int dxl_comm_result = packetHandler_->write4ByteTxRx(portHandler_, id, 116, position_raw, &dxl_error);
+
+    if (dxl_comm_result != COMM_SUCCESS || dxl_error != 0) {
+      RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Error setting position, attempting reconnect...", id);
+      reconnectDynamixel();
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Motor ID %d: Goal position set to %.2f rad", id, position_rad);
+    }
+  }
+
+  void writeGoalVelocity_backup(int id, float velocity_rad_s)
   {
     float rev_per_min = (velocity_rad_s * 60.0f) / (2.0f * M_PI);
     int32_t velocity_raw = static_cast<int32_t>(rev_per_min / motor_velocity_factor_map_[id]);
@@ -339,7 +429,7 @@ public:
     }
   }
 
-  void writeGoalPosition(int id, float position_deg)
+  void writeGoalPosition_backup(int id, float position_deg)
   {
     uint32_t position_raw = static_cast<uint32_t>((position_deg / 360.0f) * motor_position_full_scale_map_[id]);
     uint8_t dxl_error = 0;
@@ -355,6 +445,7 @@ public:
 
   ~MultiMotorControlNode()
   {
+    // Clean up resources
     if (groupBulkRead_ != nullptr) {
       delete groupBulkRead_;
     }
@@ -365,129 +456,7 @@ public:
   }
 
 private:
-  // ฟังก์ชัน config register เพิ่มเติมสำหรับมอเตอร์แต่ละตัว
-  void configureMotor1(int id)
-  {
-    uint8_t dxl_error = 0;
-    int dxl_comm_result = 0;
-    // Temperature Limit (address 31, 1 byte)
-    dxl_comm_result = packetHandler_->write1ByteTxRx(portHandler_, id, 31, motor_temperature_limit_map_[id], &dxl_error);
-    if (dxl_comm_result != COMM_SUCCESS) {
-      RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Temperature Limit: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
-    }
-    // Max Voltage Limit (address 32, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 32, motor_max_voltage_limit_map_[id], &dxl_error);
-    if (dxl_comm_result != COMM_SUCCESS) {
-      RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set Max Voltage Limit: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
-    }
-    // Min Voltage Limit (address 34, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 34, motor_min_voltage_limit_map_[id], &dxl_error);
-    // PWM Limit (address 36, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 36, motor_pwm_limit_map_[id], &dxl_error);
-    // Current Limit (address 38, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 38, motor_current_limit_map_[id], &dxl_error);
-    // Velocity Limit (address 44, 4 bytes)
-    dxl_comm_result = packetHandler_->write4ByteTxRx(portHandler_, id, 44, motor_velocity_limit_map_[id], &dxl_error);
-    // Max Position Limit (address 48, 4 bytes)
-    dxl_comm_result = packetHandler_->write4ByteTxRx(portHandler_, id, 48, motor_max_position_limit_map_[id], &dxl_error);
-    // Min Position Limit (address 52, 4 bytes)
-    dxl_comm_result = packetHandler_->write4ByteTxRx(portHandler_, id, 52, motor_min_position_limit_map_[id], &dxl_error);
-    // Velocity I Gain (address 76, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 76, motor_velocity_i_gain_map_[id], &dxl_error);
-    // Velocity P Gain (address 78, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 78, motor_velocity_p_gain_map_[id], &dxl_error);
-    // Position D Gain (address 80, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 80, motor_position_d_gain_map_[id], &dxl_error);
-    // Position I Gain (address 82, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 82, motor_position_i_gain_map_[id], &dxl_error);
-    // Position P Gain (address 84, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 84, motor_position_p_gain_map_[id], &dxl_error);
-    // Feedforward 2nd Gain (address 88, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 88, motor_feedforward_2nd_gain_map_[id], &dxl_error);
-    // Feedforward 1st Gain (address 90, 2 bytes)
-    dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, 90, motor_feedforward_1st_gain_map_[id], &dxl_error);
-  }
-
-  void configureMotor2(int id)
-  {
-    uint8_t dxl_error = 0;
-    int dxl_comm_result;
-
-    struct MotorRegister {
-      uint16_t addr;
-      uint8_t size;
-      uint32_t target_value;
-    };
-
-    // สร้าง vector ของค่า config ทั้งหมดที่ต้องการเช็คและตั้งค่า
-    std::vector<MotorRegister> configs = {
-      {ADDR_OPERATING_MODE, 1, motor_operating_mode_map_[id]},
-      {ADDR_TEMPERATURE_LIMIT, 1, motor_temperature_limit_map_[id]},
-      {ADDR_MAX_VOLTAGE_LIMIT, 2, motor_max_voltage_limit_map_[id]},
-      {ADDR_MIN_VOLTAGE_LIMIT, 2, motor_min_voltage_limit_map_[id]},
-      {ADDR_PWM_LIMIT, 2, motor_pwm_limit_map_[id]},
-      {ADDR_CURRENT_LIMIT, 2, motor_current_limit_map_[id]},
-      {ADDR_VELOCITY_LIMIT, 4, motor_velocity_limit_map_[id]},
-      {ADDR_MAX_POSITION_LIMIT, 4, motor_max_position_limit_map_[id]},
-      {ADDR_MIN_POSITION_LIMIT, 4, motor_min_position_limit_map_[id]},
-      {ADDR_VELOCITY_I_GAIN, 2, motor_velocity_i_gain_map_[id]},
-      {ADDR_VELOCITY_P_GAIN, 2, motor_velocity_p_gain_map_[id]},
-      {ADDR_POSITION_D_GAIN, 2, motor_position_d_gain_map_[id]},
-      {ADDR_POSITION_I_GAIN, 2, motor_position_i_gain_map_[id]},
-      {ADDR_POSITION_P_GAIN, 2, motor_position_p_gain_map_[id]},
-      {ADDR_FEEDFORWARD_2ND_GAIN, 2, motor_feedforward_2nd_gain_map_[id]},
-      {ADDR_FEEDFORWARD_1ST_GAIN, 2, motor_feedforward_1st_gain_map_[id]},
-    };
-
-    for (auto config : configs) {
-      uint32_t current_value = 0;
-
-      // อ่านค่าเดิมก่อน
-      if (config.size == 1) {
-        uint8_t val;
-        dxl_comm_result = packetHandler_->read1ByteTxRx(portHandler_, id, config.addr, &val);
-        current_value = val;
-      } else if (config.size == 2) {
-        uint16_t val;
-        dxl_comm_result = packetHandler_->read2ByteTxRx(portHandler_, id, config.addr, &val);
-        current_value = val;
-      } else if (config.size == 4) {
-        uint32_t val;
-        dxl_comm_result = packetHandler_->read4ByteTxRx(portHandler_, id, config.addr, &val);
-        current_value = val;
-      }
-
-      if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to read register %u", id, config.addr);
-        continue;
-      }
-
-      // เปรียบเทียบค่าเดิมกับ target ถ้าเท่ากันไม่ต้องเขียนซ้ำ
-      if (current_value == config.target_value) {
-        RCLCPP_INFO(this->get_logger(), "Motor ID %d: Register %d unchanged (%u)", id, config.addr, current_value);
-        continue;
-      }
-
-      // เขียนค่าใหม่เนื่องจากค่าต่างกัน
-      uint8_t dxl_error = 0;
-      if (config.size == 1) {
-        dxl_comm_result = packetHandler_->write1ByteTxRx(portHandler_, id, config.addr, config.target_value, &dxl_error);
-      } else if (config.size == 2) {
-        dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, config.addr, config.target_value, &dxl_error);
-      } else if (config.size == 4) {
-        dxl_comm_result = packetHandler_->write4ByteTxRx(portHandler_, id, config.addr, config.target_value, &dxl_error);
-      }
-
-      if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set register %d: %s", id, config.addr, packetHandler_->getTxRxResult(dxl_comm_result));
-      } else if (dxl_error != 0) {
-        RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Error setting register %d: %s", id, config.addr, packetHandler_->getRxPacketError(dxl_error));
-      } else {
-        RCLCPP_INFO(this->get_logger(), "Motor ID %d: Set register %d from %u to %u", id, config.addr, current_value, config.target_value);
-      }
-    }
-  }
-  
+  // Function for additional register configuration per motor
   void configureMotor(int id)
   {
     RCLCPP_INFO(this->get_logger(), "------ Configuring Motor ID: %d ------", id);
@@ -523,7 +492,7 @@ private:
     for (auto config : configs) {
       uint32_t current_value = 0;
 
-      // อ่านค่าเดิมก่อน
+      // Read the current value before writing
       if (config.size == 1) {
         uint8_t val;
         dxl_comm_result = packetHandler_->read1ByteTxRx(portHandler_, id, config.addr, &val, &dxl_error);
@@ -548,13 +517,13 @@ private:
 
       RCLCPP_INFO(this->get_logger(), "Motor ID %d: %s current = %u, target = %u", id, config.name.c_str(), current_value, config.target_value);
 
-      // เปรียบเทียบค่าก่อนเขียน
+      // Compare current value with target; skip writing if unchanged
       if (current_value == config.target_value) {
         RCLCPP_INFO(this->get_logger(), "Motor ID %d: %s unchanged, skipping.", id, config.name.c_str());
         continue;
       }
 
-      // เขียนค่าใหม่เนื่องจากค่าต่างกัน
+      // Write new value if different
       if (config.size == 1) {
         dxl_comm_result = packetHandler_->write1ByteTxRx(portHandler_, id, config.addr, config.target_value, &dxl_error);
       } else if (config.size == 2) {
@@ -574,7 +543,7 @@ private:
     RCLCPP_INFO(this->get_logger(), "------ Finished Configuring Motor ID: %d ------\n", id);
   }
 
-  // Callback สำหรับสั่งงาน Goal Current แบบ Group Command
+  // Callback for Group Goal Current command
   void groupGoalCurrentCallback(const std_msgs::msg::Int16MultiArray::SharedPtr msg)
   {
     if (msg->data.size() != motor_ids_.size()) {
@@ -642,7 +611,7 @@ private:
     groupSyncPosition.txPacket();
   }
 
-  // ฟังก์ชันอ่าน feedback โดยใช้ GroupBulkRead และ publish joint state
+  // Function to read feedback using GroupBulkRead and publish joint state
   void readFeedback()
   {
     int dxl_comm_result = groupBulkRead_->txRxPacket();
@@ -670,13 +639,13 @@ private:
       std_msgs::msg::Float32 current_msg;
       current_msg.data = current_mA;
       current_pub_map_[id]->publish(current_msg);
-      uint32_t velocity_raw = groupBulkRead_->getData(id, ADDR_PRESENT_VELOCITY, 4);
+      int32_t velocity_raw = groupBulkRead_->getData(id, ADDR_PRESENT_VELOCITY, 4);
       float rev_per_min = static_cast<float>(velocity_raw) * motor_velocity_factor_map_[id];
       float velocity_rad_s = (rev_per_min * 2.0f * M_PI) / 60.0f;
       std_msgs::msg::Float32 velocity_msg;
       velocity_msg.data = velocity_rad_s;
       velocity_pub_map_[id]->publish(velocity_msg);
-      uint32_t position_raw = groupBulkRead_->getData(id, ADDR_PRESENT_POSITION, 4);
+      int32_t position_raw = groupBulkRead_->getData(id, ADDR_PRESENT_POSITION, 4);
       float position_deg = (static_cast<float>(position_raw) * 360.0f) / motor_position_full_scale_map_[id];
       std_msgs::msg::Float32 position_msg;
       position_msg.data = position_deg;
