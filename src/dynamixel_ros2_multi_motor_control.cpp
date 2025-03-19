@@ -148,24 +148,11 @@ public:
         topic,
         10,
         [this, id](const std_msgs::msg::Int16::SharedPtr msg) {
-<<<<<<< HEAD
           writeGoalVelocity(id, msg->data);
-=======
-          uint8_t dxl_error = 0;
-          int dxl_comm_result = packetHandler_->write2ByteTxRx(portHandler_, id, ADDR_GOAL_CURRENT, msg->data, &dxl_error);
-          if (dxl_comm_result != COMM_SUCCESS) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to write goal current: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
-          } else if (dxl_error != 0) {
-            RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Goal current write error: %s", id, packetHandler_->getRxPacketError(dxl_error));
-          } else {
-            RCLCPP_INFO(this->get_logger(), "Motor ID %d: Set goal current to %d", id, msg->data);
-          }
->>>>>>> 7d335ecdf13faeb1a654c79260b5c5bfb62c6803
         }
       );
       goal_current_sub_map_[id] = sub;
     }
-<<<<<<< HEAD
     // for (auto id : motor_ids_) {
     //   std::string topic = "motor_" + std::to_string(id) + "/goal_current";
     //   auto sub = this->create_subscription<std_msgs::msg::Int16>(
@@ -185,8 +172,6 @@ public:
     //   );
     //   goal_current_sub_map_[id] = sub;
     // }
-=======
->>>>>>> 7d335ecdf13faeb1a654c79260b5c5bfb62c6803
     
     // Subscriber for Group Goal Current
     group_goal_current_sub_ = this->create_subscription<std_msgs::msg::Int16MultiArray>(
@@ -363,7 +348,6 @@ public:
       std::bind(&MultiMotorControlNode::readFeedback, this));
   }
 
-<<<<<<< HEAD
   void reconnectDynamixel()
   {
     RCLCPP_WARN(this->get_logger(), "Attempting to reconnect Dynamixel...");
@@ -400,14 +384,11 @@ public:
     }
   }
 
-=======
->>>>>>> 7d335ecdf13faeb1a654c79260b5c5bfb62c6803
   void writeGoalVelocity(int id, float velocity_rad_s)
   {
     float rev_per_min = (velocity_rad_s * 60.0f) / (2.0f * M_PI);
     int32_t velocity_raw = static_cast<int32_t>(rev_per_min / motor_velocity_factor_map_[id]);
     uint8_t dxl_error = 0;
-<<<<<<< HEAD
     int dxl_comm_result = packetHandler_->write4ByteTxRx(portHandler_, id, 104, velocity_raw, &dxl_error);
 
     if (dxl_comm_result != COMM_SUCCESS || dxl_error != 0) {
@@ -438,8 +419,6 @@ public:
     float rev_per_min = (velocity_rad_s * 60.0f) / (2.0f * M_PI);
     int32_t velocity_raw = static_cast<int32_t>(rev_per_min / motor_velocity_factor_map_[id]);
     uint8_t dxl_error = 0;
-=======
->>>>>>> 7d335ecdf13faeb1a654c79260b5c5bfb62c6803
     int dxl_comm_result = packetHandler_->write4ByteTxRx(portHandler_, id, 104, velocity_raw, &dxl_error); // 104: Goal Velocity
     if (dxl_comm_result != COMM_SUCCESS) {
       RCLCPP_ERROR(this->get_logger(), "Motor ID %d: Failed to set goal velocity: %s", id, packetHandler_->getTxRxResult(dxl_comm_result));
@@ -450,11 +429,7 @@ public:
     }
   }
 
-<<<<<<< HEAD
   void writeGoalPosition_backup(int id, float position_deg)
-=======
-  void writeGoalPosition(int id, float position_deg)
->>>>>>> 7d335ecdf13faeb1a654c79260b5c5bfb62c6803
   {
     uint32_t position_raw = static_cast<uint32_t>((position_deg / 360.0f) * motor_position_full_scale_map_[id]);
     uint8_t dxl_error = 0;

@@ -16,7 +16,6 @@ multi_motor_control_node:
     default_velocity_limit: 200                 # Maximum allowable velocity of the motor (in RPM).
     default_max_position_limit: 4095            # Maximum allowed position value for the motor (e.g., 4095 = 360 degrees).
     default_min_position_limit: 0               # Minimum allowed position value for the motor (e.g., 0 = 0 degrees).
-<<<<<<< HEAD
     
     # PID controller parameters (Integral and Proportional gains) used in Velocity Control mode.
     default_velocity_i_gain: 1920               
@@ -29,14 +28,6 @@ multi_motor_control_node:
     
     # Feedforward gains used to improve positional control performance (usually set to 0 if unused).
     default_feedforward_2nd_gain: 0             
-=======
-    default_velocity_i_gain: 1920               # PID controller parameters (Integral and Proportional gains) used in Velocity Control mode.
-    default_velocity_p_gain: 100                
-    default_position_d_gain: 0                  # PID controller parameters (Derivative, Integral, and Proportional gains) used in Position Control mode.
-    default_position_i_gain: 0
-    default_position_p_gain: 800
-    default_feedforward_2nd_gain: 0             # Feedforward gains used to improve positional control performance (usually set to 0 if unused).
->>>>>>> 7d335ecdf13faeb1a654c79260b5c5bfb62c6803
     default_feedforward_1st_gain: 0
 
     port_name: "/dev/ttyUSB0"                   # Serial port name for connecting to Dynamixel motors (e.g., /dev/ttyUSB0).
