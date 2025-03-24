@@ -225,25 +225,6 @@ ros2 topic echo /joint_states
 sudo chmod 666 /dev/ttyUSB0
 ```
 
-## Contributing
-
-Pull requests and issues are welcome. Please follow these guidelines:
-
-1. Clearly document changes and rationale
-2. Test thoroughly before submission
-3. Follow ROS2 coding standards
-4. Update documentation as needed
-
-## License
-
-Distributed under the MIT License. See `LICENSE` for more details.
-
-## Contact
-
-For questions, suggestions, or support:
-- Open an issue on the repository
-- Contact the repository maintainer at: [maintainer@example.com](mailto:maintainer@example.com)
-
 ---
 
 *This package is not affiliated with ROBOTIS, the manufacturer of Dynamixel motors.*
